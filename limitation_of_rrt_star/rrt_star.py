@@ -23,11 +23,31 @@ def is_feasible(obstacles, x):
 def cal_dist(x1, x2):
     return np.linalg.norm(np.array(x1) - np.array(x2))
 
+def node_cost(tree, x):
+    pass
+
+def edge_cost(x1, x2):
+    return cal_dist(x1, x2)
 
 def is_goal(goal_pos, new_node):
     dist = cal_dist(goal_pos, new_node.data)
     return True if dist < 0.05 else False
 
+def steer(x_tree, x_rand):
+    dist = cal_dist(x_tree, x_rand)
+    sigma = zip(
+        np.arange(
+            x_tree[0],
+            x_rand[0],
+            stepscale / dist * (x_rand[0] - x_tree[0]),
+        ),
+        np.arange(
+            x_tree[1],
+            x_rand[1],
+            stepscale / dist * (x_rand[1] - x_tree[1]),
+        ),
+    )
+    return sigma
 
 def render(problem, tree, x_tree, x_rand):
     init_pos, goal_pos, x_lim, y_lim, obstacles = problem
@@ -52,7 +72,7 @@ def render(problem, tree, x_tree, x_rand):
         plt.fill(xs, ys, fc="m", label="obstacle")
 
     # save figure
-    plt.title("Original RRT")
+    plt.title("RRT Star")
     plt.legend()
     plt.xlim(x_lim[0], x_lim[1])
     plt.ylim(y_lim[0], y_lim[1])
@@ -66,7 +86,9 @@ if __name__ == "__main__":
     num_max_tries = 5
     stepscale = 0.5
     is_achieved = False
-    eta = 0.5
+    gamma = 1
+    eta = 1.0
+    d = 2 # dimension of configuration
 
     # set init and goal
     init_pos = [-4, -1]
@@ -111,44 +133,63 @@ if __name__ == "__main__":
             pre, fill, node = row
             if cal_dist(sample_node.data, x_rand) > cal_dist(node.data, x_rand):
                 sample_node = node
-        x_near = sample_node
+        x_nearest = sample_node
+        
+        # get x_new
+        sigma = steer(x_nearest.data, x_rand)
+        x_new = x_nearest.data
+        for x in sigma:
+            if is_feasible(obstacles, x) and cal_dist(x, x_nearest.data) < eta:
+                x_new = x
+        
+        # get set of near nodes from sampled point
+        X_near = []; n = len(all_nodes)
+        for row in RenderTree(root):
+            pre, fill, node = row
+            if cal_dist(node.data, x_new) < max(gamma*(np.log(n)/n)**(1/d), eta):
+                X_near.append(node)
+        
+        # choose parent that have minimum cost        
+        minCost = 9999
+        for x_near in X_near:
+            cost = cal_dist(x_near.data, init_pos) + cal_dist(x_near.data, x_new) # node cost + edge cost
+            #TODO: need to calculate node_cost and edge_cost
+            if cost < minCost:
+                minCost = cost
+                x_min = x_near
 
-        # extend from x_tree to x_rand
-        dist = cal_dist(x_near.data, x_rand)
-        extended_nodes = zip(
-            np.arange(
-                x_near.data[0],
-                x_rand[0],
-                stepscale / dist * (x_rand[0] - x_near.data[0]),
-            ),
-            np.arange(
-                x_near.data[1],
-                x_rand[1],
-                stepscale / dist * (x_rand[1] - x_near.data[1]),
-            ),
-        )
+        # feasibility check for the chosen edge
+        sigma = steer(x_min.data, x_new)
+        if all([is_feasible(obstacles, x_ent) for x_ent in sigma]):
+            # add this node
+            new_node = Node(f"{len(all_nodes)}", parent=x_min, data=x_new)
+            all_nodes.append(new_node)
 
-        # add the new nodes to the tree
-        x_before = None
-        for x_ext in extended_nodes:
-            if is_feasible(obstacles, x_ext) and cal_dist(x_ext, x_near.data) <= eta:
-                new_node = Node(
-                    f"{len(all_nodes)}",
-                    parent=x_near if x_before != None else x_before,
-                    data=x_ext,
-                )
-                all_nodes.append(new_node)
-
-                # if goal configuration is added to the tree, terminate
-                if is_goal(goal_pos, new_node):
-                    is_achieved = True
-                    break
-
-                x_before = new_node
-            else:
-                break
+            # rewiring among X_near
+            for x_near in X_near:
+                sigma = steer(x_new, x_near.data)
+                new_cost = cal_dist(x_new, init_pos) + cal_dist(x_near.data, x_new)
+                prev_cost = cal_dist(x_near, init_pos)
+                #TODO: need to calculate node_cost and edge_cost
+                if new_cost < prev_cost:
+                    if all([is_feasible(obstacles, x_ent) for x_ent in sigma]):
+                        x_near.parent = None # detach
+                        x_near.parent = new_node# attach
+                
+                
 
         # plot scene and tree nodes
-        render(problem, root, x_near.data, x_rand)
+        render(problem, root, x_min.data, x_rand)
+
+
+
+
+
+        # if goal configuration is added to the tree, terminate
+        for row in RenderTree(root):
+            pre, fill, node = row
+            if is_goal(goal_pos, node):
+                is_achieved = True
+                break
 
 # TODO: draw resulting found path
