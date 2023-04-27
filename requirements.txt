@@ -1,3 +1,4 @@
 anytree
 numpy
 matplotlib
+shapely
