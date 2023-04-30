@@ -3,7 +3,7 @@
 # email: wnsdlqjtm@gmail.com
 ##########################
 
-from anytree import Node, RenderTree
+from anytree import Node, RenderTree, Walker
 from random import sample
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,8 +23,13 @@ def is_feasible(obstacles, x):
 def cal_dist(x1, x2):
     return np.linalg.norm(np.array(x1) - np.array(x2))
 
-def node_cost(tree, x):
-    pass
+def node_cost(root, x):
+    walker = Walker()
+    way_to_x = walker.walk(root, x)[2]
+    cost = 0 
+    for step_node in way_to_x:
+        cost += cal_dist(root.data, step_node.data)
+    return cost
 
 def edge_cost(x1, x2):
     return cal_dist(x1, x2)
@@ -152,8 +157,7 @@ if __name__ == "__main__":
         # choose parent that have minimum cost        
         minCost = 9999
         for x_near in X_near:
-            cost = cal_dist(x_near.data, init_pos) + cal_dist(x_near.data, x_new) # node cost + edge cost
-            #TODO: need to calculate node_cost and edge_cost
+            cost = node_cost(root, x_near) + edge_cost(x_near.data, x_new) # node cost + edge cost
             if cost < minCost:
                 minCost = cost
                 x_min = x_near
@@ -168,16 +172,13 @@ if __name__ == "__main__":
             # rewiring among X_near
             for x_near in X_near:
                 sigma = steer(x_new, x_near.data)
-                new_cost = cal_dist(x_new, init_pos) + cal_dist(x_near.data, x_new)
-                prev_cost = cal_dist(x_near, init_pos)
-                #TODO: need to calculate node_cost and edge_cost
+                new_cost = node_cost(root, new_node) + edge_cost(x_near.data, x_new)
+                prev_cost = node_cost(root, x_near)
                 if new_cost < prev_cost:
                     if all([is_feasible(obstacles, x_ent) for x_ent in sigma]):
                         x_near.parent = None # detach
                         x_near.parent = new_node# attach
                 
-                
-
         # plot scene and tree nodes
         render(problem, root, x_min.data, x_rand)
 
